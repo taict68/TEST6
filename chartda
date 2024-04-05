@@ -5,23 +5,36 @@ indicator("Chạc Đà 2.0", overlay= false, max_bars_back = 5000)
 
 //input
 
-colornen = input.bool(false, " Màu theo Nến?")
-colorup = input.color  (color.aqua,   ' Đà tăng')
-colordown = input.color( color.aqua, " Đà giảm")
+gapluon     = input.bool( true, 'Lấy Gap không bro?')
+colorchacda = input.color(color.aqua,' Đà màu gì nè')
 
 scale = input.string('Normal', ' Chạc đà on Scale?', options = ['Normal', 'Log', 'Percent'])
 
 // Calculations
+float diff = na
 
-float diff = switch scale
-    "Log"     => diff = math.log(close) - math.log(open)  
-    "Percent" =>  diff = ( close - open)/ open   
-    => diff = close - open  
+if gapluon
+    if barstate.isfirst 
+        diff := switch scale
+            "Log"     => diff := math.log(close) - math.log(open)  
+            "Percent" =>  diff := ( close - open)/ open   
+            => diff := close - open
+    else 
+        diff := switch scale
+            "Log"     => diff := math.log(close) - math.log(close[1])  
+            "Percent" =>  diff := ( close - close[1])/ open   
+            => diff := close - close[1]   
+else
+    diff := switch scale
+        "Log"     => diff := math.log(close) - math.log(open)  
+        "Percent" =>  diff := ( close - open)/ open   
+        => diff := close - open
+
 
 absdiff = math.abs(diff)
 
-highestspread = ta.max(absdiff)
-highestvol    = ta.max(volume)
+highestspread = ta.max(absdiff[1])
+highestvol    = ta.max(nz(volume[1]))
 
 spreadscore = highestspread / 5
 volumescore = highestvol / 5
@@ -36,6 +49,7 @@ diemspread := absdiff / spreadscore
 total := diemspread + diemvol
 
 // T/G
+
 int dir = 0 
 
 ascdiff = absdiff >= absdiff[1]
@@ -86,6 +100,5 @@ else if ( dir == -1 and dir[1] == 1) or (dir == -1 and dir[1] == -1 )
     o := nz(c[1]) 
     c := o - total
 
-colorcon = colornen? close > open : c > o    
 
-plotcandle( o, o>c? o : c, o>c? c: o, c, ' Chạc đà', color = colorcon ? colorup : colordown, editable = false)
+plotcandle( o, o>c? o : c, o>c? c: o, c, ' Chạc đà', color = colorchacda, editable = false)
