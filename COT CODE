@@ -1,0 +1,341 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © TradingView
+
+//@version=5
+indicator("Commitment of Traders: Financial Metrics", "COT Financial", format = format.volume)
+
+import TradingView/LibraryCOT/2 as cot
+
+// Directions.
+var string ND  = " [ND]"
+var string LS  = " [L|Sh]"
+var string LSS = " [L|Sh|Sp]"
+
+// ————— Metric names.
+var string MB01 = "Open Interest"
+var string MB02 = "Dealer Positions"
+var string MB03 = "Asset Manager Positions"
+var string MB04 = "Leveraged Funds Positions"
+var string MB05 = "Other Reportable Positions"
+var string MB06 = "Total Reportable Positions"
+var string MB07 = "Nonreportable Positions"
+var string MB08 = "Traders Total"
+var string MB09 = "Traders Dealer"
+var string MB10 = "Traders Asset Manager"
+var string MB11 = "Traders Leveraged Funds"
+var string MB12 = "Traders Other Reportable"
+var string MB13 = "Traders Total Reportable"
+var string MB14 = "Concentration Gross LE 4 TDR"
+var string MB15 = "Concentration Gross LE 8 TDR"
+var string MB16 = "Concentration Net LE 4 TDR"
+var string MB17 = "Concentration Net LE 8 TDR"
+
+// Metric name options.
+var string M01 = MB01 + ND
+var string M02 = MB02 + LSS
+var string M03 = MB03 + LSS
+var string M04 = MB04 + LSS
+var string M05 = MB05 + LSS
+var string M06 = MB06 + LS
+var string M07 = MB07 + LS
+var string M08 = MB08 + ND
+var string M09 = MB09 + LSS
+var string M10 = MB10 + LSS
+var string M11 = MB11 + LSS
+var string M12 = MB12 + LSS
+var string M13 = MB13 + LS
+var string M14 = MB14 + LS
+var string M15 = MB15 + LS
+var string M16 = MB16 + LS
+var string M17 = MB17 + LS
+
+
+// Tooltips.
+var string TT_METRIC = "Each metric is followed by its possible directions in square brackets:\n [ND] 🠆 No Direction\n [L] 🠆 Long\n [Sh] 🠆 Short\n [Sp] 🠆 Spreading" 
+var string TT_DIR    = "The 'direction' must be one that is allowed for the chosen metric. Valid selections are displayed with each metric in the above field's dropdown menu items."
+var string TT_TYPE   = "The 'type' qualifies the metric data to be retrieved."
+var string TT_MODE   = 
+  "Determines which information from the chart's symbol will be used to fetch COT data:\n
+  • 'Root' uses the root of a futures symbol ('ES' for 'ESH2020').\n
+  • 'Base currency' uses the base currency in a forex pair ('EUR' for 'EURUSD').\n
+  • 'Currency' uses the quote currency, i.e., the currency the symbol is traded in ('JPY' for 'TSE:9984' or 'USDJPY').\n
+  • 'Auto' tries all modes, in turn.\n
+  If no COT data can be found, a runtime error is generated."
+var string TT_OVERRIDE = 
+  "Instead of letting the script generate the CFTC COT code from the chart and the above selections when this field is empty, you can specify an unrelated CFTC COT code here, e.g., 001602 for wheat futures."
+
+// Inputs.
+
+bool netlong_OI = input.bool(true , 'OI')
+
+bool netlong_1  = input.bool(true , '', inline = 'netlong1')
+string metricNameInput      = input.string(M04,            "Net Long 1", inline = 'netlong1' ,              options = [M01, M02, M03, M04, M05, M06, M07, M08, M09, M10, M11, M12, M13, M14, M15, M16, M17], tooltip = TT_METRIC)
+
+
+bool netlong_2 = input.bool(true, '', inline = 'netlong2')
+string metricNameInput1      = input.string(M07,            "Net Long 2", inline = 'netlong2',                options = [M01, M02, M03, M04, M05, M06, M07, M08, M09, M10, M11, M12, M13, M14, M15, M16, M17], tooltip = TT_METRIC)
+
+string metricDirectionInput_S = "Short"
+string metricDirectionInput_L = "Long"
+
+
+string selectionModeInput   = input.string("Auto",          "COT selection mode",   options = ["Auto", "Root", "Base currency", "Currency"], tooltip = TT_MODE)
+string includeOptionsInput  = input.string("Futures + Options",       "Futures/Options",      options = ["Futures", "Options", "Futures + Options"])
+string userCFTCCodeInput    = input.string("",              "CFTC Code",            tooltip = TT_OVERRIDE)
+
+
+getMetricName(simple string userMetricName) =>
+    result = switch userMetricName
+        M01 => MB01
+        M02 => MB02
+        M03 => MB03
+        M04 => MB04
+        M05 => MB05
+        M06 => MB06
+        M07 => MB07
+        M08 => MB08
+        M09 => MB09
+        M10 => MB10
+        M11 => MB11
+        M12 => MB12
+        M13 => MB13
+        M14 => MB14
+        M15 => MB15
+        M16 => MB16
+        M17 => MB17
+        => ""
+
+// Chart-based or user-based CFTC code.
+var string cftcCode = userCFTCCodeInput != "" ? userCFTCCodeInput : cot.convertRootToCOTCode(selectionModeInput)
+
+// Fetch the two sources from which we can generate all three combinations of futures and options data.
+
+string typeCOT = "Financial"
+string metricType = "All"
+
+string metricName = getMetricName(metricNameInput)
+
+string futuresOnlyTicker        = cot.COTTickerid(typeCOT, cftcCode, false,  metricName, metricDirectionInput_S, metricType)
+string futuresWithOptionsTicker = cot.COTTickerid(typeCOT, cftcCode, true, metricName, metricDirectionInput_S, metricType)
+float futuresOnly        = request.security(futuresOnlyTicker, "D", close, ignore_invalid_symbol = true)
+float futuresWithOptions = request.security(futuresWithOptionsTicker, "D", close, ignore_invalid_symbol = true)
+
+
+string futuresOnlyTicker1        = cot.COTTickerid(typeCOT, cftcCode, false,  metricName, metricDirectionInput_L, metricType)
+string futuresWithOptionsTicker1 = cot.COTTickerid(typeCOT, cftcCode, true, metricName, metricDirectionInput_L, metricType)
+float futuresOnly1        = request.security(futuresOnlyTicker1, "D", close, ignore_invalid_symbol = true)
+float futuresWithOptions1 = request.security(futuresWithOptionsTicker1, "D", close, ignore_invalid_symbol = true)
+
+if barstate.islastconfirmedhistory and (na(futuresOnly) or na(futuresWithOptions))
+    runtime.error(str.format("Could not find relevant COT data based on the current symbol and the COT selection  mode `{0}`.", selectionModeInput))
+
+// Select the user-defined futures and options content for the COT data.
+float COTSeries = 
+  switch includeOptionsInput
+	"Futures" => futuresOnly
+	"Options" => futuresWithOptions - futuresOnly
+	"Futures + Options" => futuresWithOptions
+	=> na
+
+float COTSeries1 = 
+  switch includeOptionsInput
+	"Futures" => futuresOnly1
+	"Options" => futuresWithOptions1 - futuresOnly1
+	"Futures + Options" => futuresWithOptions1
+	=> na
+
+
+
+netlongvalue = COTSeries1 - COTSeries
+
+// Plot COT data.
+
+
+hline( 0 ,'Zero Line', color.black, linestyle = hline.style_solid, linewidth =1)
+
+plot(netlong_1 ? netlongvalue: na, "Net long 1", color = netlongvalue >0 ? color.rgb(0, 166, 187) : color.orange ,style = plot.style_line)
+
+// Inputs OI
+string metricNameInput_OI      = M01
+string metricDirectionInput_S_OI  = "No direction"
+
+// Fetch the two sources from which we can generate all three combinations of futures and options data.
+
+string metricName_OI  = getMetricName(metricNameInput_OI )
+string futuresOnlyTicker_OI         = cot.COTTickerid(typeCOT, cftcCode, false,  metricName_OI , metricDirectionInput_S_OI , metricType)
+string futuresWithOptionsTicker_OI = cot.COTTickerid(typeCOT, cftcCode, true, metricName_OI, metricDirectionInput_S_OI, metricType)
+float futuresOnly_OI        = request.security(futuresOnlyTicker_OI, "D", close, ignore_invalid_symbol = true)
+float futuresWithOptions_OI = request.security(futuresWithOptionsTicker_OI, "D", close, ignore_invalid_symbol = true)
+
+if barstate.islastconfirmedhistory and (na(futuresOnly) or na(futuresWithOptions))
+    runtime.error(str.format("Could not find relevant COT data based on the current symbol and the COT selection  mode `{0}`.", selectionModeInput))
+
+// Select the user-defined futures and options content for the COT data.
+float COTSeries_OI = 
+  switch includeOptionsInput
+	"Futures" => futuresOnly_OI
+	"Options" => futuresWithOptions_OI - futuresOnly_OI
+	"Futures + Options" => futuresWithOptions_OI
+	=> na
+
+// Plot COT data.
+plot(netlong_OI? COTSeries_OI: na, "OI", style = plot.style_line)
+
+// Percentage cá
+
+Percentage_whale = ( COTSeries1 + COTSeries)/COTSeries_OI * 100
+
+plot(Percentage_whale, "% Whale", color = color.black, style = plot.style_line)
+
+string metricName1 = getMetricName(metricNameInput1)
+
+
+string futuresOnlyTicker2        = cot.COTTickerid(typeCOT, cftcCode, false,  metricName1, metricDirectionInput_S, metricType)
+string futuresWithOptionsTicker2 = cot.COTTickerid(typeCOT, cftcCode, true, metricName1, metricDirectionInput_S , metricType)
+float futuresOnly2        = request.security(futuresOnlyTicker2, "D", close, ignore_invalid_symbol = true)
+float futuresWithOptions2 = request.security(futuresWithOptionsTicker2, "D", close, ignore_invalid_symbol = true)
+
+if barstate.islastconfirmedhistory and (na(futuresOnly) or na(futuresWithOptions))
+    runtime.error(str.format("Could not find relevant COT data based on the current symbol and the COT selection  mode `{0}`.", selectionModeInput))
+
+// Select the user-defined futures and options content for the COT data.
+
+float COTSeries2 = 
+  switch includeOptionsInput
+	"Futures" => futuresOnly2
+	"Options" => futuresWithOptions2 - futuresOnly2
+	"Futures + Options" => futuresWithOptions2
+	=> na
+
+string futuresOnlyTicker3        = cot.COTTickerid(typeCOT, cftcCode, false,  metricName1, metricDirectionInput_L, metricType)
+string futuresWithOptionsTicker3 = cot.COTTickerid(typeCOT, cftcCode, true, metricName1, metricDirectionInput_L, metricType)
+float futuresOnly3        = request.security(futuresOnlyTicker3, "D", close, ignore_invalid_symbol = true)
+float futuresWithOptions3 = request.security(futuresWithOptionsTicker3, "D", close, ignore_invalid_symbol = true)
+
+if barstate.islastconfirmedhistory and (na(futuresOnly) or na(futuresWithOptions))
+    runtime.error(str.format("Could not find relevant COT data based on the current symbol and the COT selection  mode `{0}`.", selectionModeInput))
+
+// Select the user-defined futures and options content for the COT data.
+
+float COTSeries3 = 
+  switch includeOptionsInput
+	"Futures" => futuresOnly3
+	"Options" => futuresWithOptions3 - futuresOnly3
+	"Futures + Options" => futuresWithOptions3
+	=> na
+// 3 = 
+
+netlongvalue2 = COTSeries3 - COTSeries2
+
+plot(netlong_2 ? netlongvalue2: na, "Net long 2", color = netlongvalue2 >0 ?  color.black :color.rgb(245, 197, 122) ,style = plot.style_stepline)
+
+// Display the COT ticker in the lower left.
+var table displayedSymbol = table.new(position.bottom_left, 1, 1)
+if barstate.isfirst
+    color TEXT_COLOR = color.black
+    color BG_COLOR   = color.new(color.blue, 50)
+    string dataCOT = userCFTCCodeInput != "" ? userCFTCCodeInput : cot.convertRootToCOTCode(selectionModeInput, false)
+    string requestedTicker = switch includeOptionsInput
+        "Futures" => futuresOnlyTicker
+        "Options" => futuresWithOptionsTicker + "-" + futuresOnlyTicker
+        "Futures + Options" => futuresWithOptionsTicker
+    string txt = str.format("COT3 data for {0} {1}\nRequested ticker: {2}", dataCOT, includeOptionsInput, requestedTicker)
+    table.cell(displayedSymbol, 0, 0, txt, text_halign = text.align_left, text_color = TEXT_COLOR, bgcolor = BG_COLOR)
+
+// Legacy
+
+// ————— Metric names
+var string LEG01 = "Open Interest"
+var string LEG02 = "Noncommercial Positions"
+var string LEG03 = "Commercial Positions"
+var string LEG04 = "Total Reportable Positions"
+var string LEG05 = "Nonreportable Positions"
+var string LEG06 = "Traders Total"
+var string LEG07 = "Traders Noncommercial"
+var string LEG08 = "Traders Commercial"
+var string LEG09 = "Traders Total Reportable"
+var string LEG10 = "Concentration Gross LT 4 TDR"
+var string LEG11 = "Concentration Gross LT 8 TDR"
+var string LEG12 = "Concentration Net LT 4 TDR"
+var string LEG13 = "Concentration Net LT 8 TDR"
+
+// Metric name options.
+var string L01 = LEG01 + ND
+var string L02 = LEG02 + LSS
+var string L03 = LEG03 + LS
+var string L04 = LEG04 + LS
+var string L05 = LEG05 + LS
+var string L06 = LEG06 + ND
+var string L07 = LEG07 + LSS
+var string L08 = LEG08 + LS
+var string L09 = LEG09 + LS
+var string L10 = LEG10 + LS
+var string L11 = LEG11 + LS
+var string L12 = LEG12 + LS
+var string L13 = LEG13 + LS
+
+
+
+// Inputs.
+
+string leg = 'Legacy Report'
+
+bool netlong_Leg = input.bool(true , '', inline = 'leg', group = leg)
+string metricNameInput_L      = input.string(L03,            "Metric", inline = 'leg',             options = [L01, L02, L03, L04, L05, L06, L07, L08, L09, L10, L11, L12, L13], tooltip = TT_METRIC, group = leg)
+
+string metricTypeInput_L      = input.string("All",          "Type",               options = ["All", "Old", "Other"], tooltip = TT_TYPE, group = leg)
+
+getMetricName_L(simple string userMetricName) =>
+    result = switch userMetricName
+        L01 => LEG01
+        L02 => LEG02
+        L03 => LEG03
+        L04 => LEG04
+        L05 => LEG05
+        L06 => LEG06
+        L07 => LEG07
+        L08 => LEG08
+        L09 => LEG09
+        L10 => LEG10
+        L11 => LEG11
+        L12 => LEG12
+        L13 => LEG13
+        => ""
+
+string metricName_L = getMetricName_L(metricNameInput_L)
+string typeCOT_Leg = "Legacy"
+
+string futuresOnlyTicker_Leg_Sh        = cot.COTTickerid(typeCOT_Leg, cftcCode, false,  metricName_L, metricDirectionInput_S, metricTypeInput_L)
+string futuresWithOptionsTicker_Leg_Sh = cot.COTTickerid(typeCOT_Leg, cftcCode, true, metricName_L, metricDirectionInput_S , metricTypeInput_L)
+float futuresOnly_Leg_Sh        = request.security(futuresOnlyTicker_Leg_Sh, "D", close, ignore_invalid_symbol = true)
+float futuresWithOptions_Leg_Sh = request.security(futuresWithOptionsTicker_Leg_Sh, "D", close, ignore_invalid_symbol = true)
+
+if barstate.islastconfirmedhistory and (na(futuresOnly) or na(futuresWithOptions))
+    runtime.error(str.format("Could not find relevant COT data based on the current symbol and the COT selection  mode `{0}`.", selectionModeInput))
+
+// Select the user-defined futures and options content for the COT data.
+
+float COTSeries_Leg_Sh = 
+  switch includeOptionsInput
+	"Futures" => futuresOnly_Leg_Sh
+	"Options" => futuresWithOptions_Leg_Sh - futuresOnly_Leg_Sh
+	"Futures + Options" => futuresWithOptions_Leg_Sh
+	=> na
+
+string futuresOnlyTicker_Leg_L        = cot.COTTickerid(typeCOT_Leg, cftcCode, false,  metricName_L, metricDirectionInput_L, metricTypeInput_L)
+string futuresWithOptionsTicker_Leg_L = cot.COTTickerid(typeCOT_Leg, cftcCode, true, metricName_L, metricDirectionInput_L, metricTypeInput_L)
+float futuresOnly_Leg_L        = request.security(futuresOnlyTicker_Leg_L, "D", close, ignore_invalid_symbol = true)
+float futuresWithOptions_Leg_L = request.security(futuresWithOptionsTicker_Leg_L, "D", close, ignore_invalid_symbol = true)
+
+// Select the user-defined futures and options content for the COT data.
+
+float COTSeries_Leg_L = 
+  switch includeOptionsInput
+	"Futures" => futuresOnly_Leg_L
+	"Options" => futuresWithOptions_Leg_L - futuresOnly_Leg_L
+	"Futures + Options" => futuresWithOptions_Leg_L
+	=> na
+
+netlongvalue_Leg_Sh = COTSeries_Leg_L - COTSeries_Leg_Sh
+
+plot(netlong_Leg ? netlongvalue_Leg_Sh: na, "COTL", color = netlongvalue2 >0 ?  color.rgb(255, 172, 237) :color.rgb(251, 164, 170) ,style = plot.style_stepline)
