@@ -1,0 +1,91 @@
+//Power by Gà thầy
+//@version=5
+
+indicator("Chạc Đà 2.0", overlay= false, max_bars_back = 5000)
+
+//input
+
+colornen = input.bool(false, " Màu theo Nến?")
+colorup = input.color  (color.aqua,   ' Đà tăng')
+colordown = input.color( color.aqua, " Đà giảm")
+
+scale = input.string('Normal', ' Chạc đà on Scale?', options = ['Normal', 'Log', 'Percent'])
+
+// Calculations
+
+float diff = switch scale
+    "Log"     => diff = math.log(close) - math.log(open)  
+    "Percent" =>  diff = ( close - open)/ open   
+    => diff = close - open  
+
+absdiff = math.abs(diff)
+
+highestspread = ta.max(absdiff)
+highestvol    = ta.max(volume)
+
+spreadscore = highestspread / 5
+volumescore = highestvol / 5
+
+float total = na
+float diemvol = na
+float diemspread = na 
+
+diemvol    :=  volume / volumescore
+diemspread := absdiff / spreadscore
+
+total := diemspread + diemvol
+
+// T/G
+int dir = 0 
+
+ascdiff = absdiff >= absdiff[1]
+desdiff = absdiff <= absdiff[1]
+equaldiff = absdiff == absdiff[1]
+
+nentangnentang = diff >= 0 and diff[1] >= 0
+nengiamnengiam = diff <= 0 and diff[1] <= 0
+
+nentangnengiam = diff <= 0 and diff[1] >= 0
+nengiamnentang = diff >= 0 and diff[1] <= 0
+
+if nentangnentang and ascdiff
+    dir := 1
+else if nentangnentang and desdiff
+    dir := -1
+else if nentangnengiam and ascdiff
+    dir := -1
+else if nentangnengiam and desdiff
+    dir := -1
+else if nentangnentang and equaldiff
+    if volume > volume[1]
+        dir:= -1
+    else
+        dir := 1
+else if nengiamnengiam and ascdiff
+    dir := -1 // 'G'
+else if nengiamnengiam and desdiff
+    dir := 1 // 'T'
+else if nengiamnentang and ascdiff
+    dir := 1 // 'T'
+else if nengiamnentang and desdiff
+    dir := 1 // 'T'
+else if nengiamnengiam and equaldiff
+    if volume > volume[1]
+        dir := 1 // 'T'
+    else
+        dir := -1 // 'G'
+
+float o = 0
+float c = 0
+
+if ( dir == 1 and dir[1] == 1 ) or (dir == 1 and dir[1] == -1 )
+    o := nz(c[1])
+    c := o + total
+
+else if ( dir == -1 and dir[1] == 1) or (dir == -1 and dir[1] == -1 )
+    o := nz(c[1]) 
+    c := o - total
+
+colorcon = colornen? close > open : c > o    
+
+plotcandle( o, o>c? o : c, o>c? c: o, c, ' Chạc đà', color = colorcon ? colorup : colordown, editable = false)
